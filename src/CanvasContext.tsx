@@ -1,32 +1,177 @@
-import { useState, createContext, useRef, useEffect } from "react";
+import { useState, createContext, useRef, useEffect, useContext } from "react";
 
 import * as fabric from "fabric";
+
+type FabricCanvas = fabric.Canvas & {
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+};
+
+const FABRIC_SAVE_TO_JSON = ["selectable", "editable", "id", "title"];
+const MAX_UNDO_STEPS = 5;
 
 const initialContext = {
   fabric,
   ready: false,
-  canvas: {} as fabric.Canvas,
+  canvas: {} as FabricCanvas,
   initializeCanvas: (_: HTMLCanvasElement) => {},
   disposeCanvas: () => {},
+  obj: null as fabric.FabricObject | null,
+  layers: [] as fabric.FabricObject[],
+  canUndo: false,
+  canRedo: false,
+  loadSvg: (svgString: string, onSuccess?: () => void) => {},
 };
 
-export const CanvasContext =
-  createContext<typeof initialContext>(initialContext);
+const CanvasContext = createContext<typeof initialContext>(initialContext);
 
-const initializeEvents = (canvas: fabric.Canvas) => {
-  canvas.on("object:added", (e) => {
-    console.log("object:added event", e);
+const initializeEvents = ({
+  canvas,
+  setActiveObject,
+  setLayers,
+}: {
+  canvas: FabricCanvas;
+  setActiveObject: (_: fabric.FabricObject | null) => void;
+  setLayers: (_: fabric.FabricObject[]) => void;
+}) => {
+  const handleSelection = (_: Partial<fabric.TEvent<fabric.TPointerEvent>>) => {
+    const activeObject = canvas.getActiveObject() || null;
+    console.log("handleSelection", { activeObject });
+    setActiveObject(activeObject);
+  };
+
+  canvas.on({
+    "selection:updated": handleSelection,
+    "selection:created": handleSelection,
+    "selection:cleared": handleSelection,
+  });
+
+  const handleObjectChanges = (
+    event: { target: fabric.FabricObject } | undefined
+  ) => {
+    console.log("handleObjectChanges event", event);
+    const { objects } = canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON);
+    setLayers(objects as fabric.FabricObject[]);
+  };
+
+  canvas.on({
+    "object:added": handleObjectChanges,
+    "object:modified": handleObjectChanges,
+    "object:removed": handleObjectChanges,
+    "object:skewing": handleObjectChanges,
   });
 };
 
-export default function CanvasContextProvider({
+// const { objects, elements } = await fabric.loadSVGFromString(templateString);
+
+// canvas.add(...objects);
+// canvas.renderAll();
+
+const history = {
+  undo: [] as string[],
+  redo: [] as string[],
+  processing: false,
+  currentState: "",
+};
+
+const loadSvg = async (
+  canvas: FabricCanvas,
+  svg: string,
+  onSuccess?: () => void
+) => {
+  const { objects } = await fabric.loadSVGFromString(svg);
+  const objectsToRender = objects.filter((item) => item !== null);
+  canvas.add(...objectsToRender);
+  canvas.renderAll();
+  onSuccess?.();
+};
+
+const initializeHistory = ({
+  canvas,
+  setCanUndo,
+  setCanRedo,
+}: {
+  canvas: FabricCanvas;
+  setCanUndo: (_: boolean) => void;
+  setCanRedo: (_: boolean) => void;
+}) => {
+  // SAVE FIRST STATE, MAKE SURE UNDO RETURNS TO IT ALWAYS
+  history.undo = [];
+  history.redo = [];
+  history.processing = false;
+  history.currentState = JSON.stringify(
+    canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON)
+  );
+
+  const checkCanUndoRedo = () => {
+    setCanUndo(history.undo.length !== 0);
+    setCanRedo(history.redo.length !== 0);
+  };
+
+  canvas.undo = async () => {
+    console.log("DOING undo", history.undo.length);
+    if (history.undo.length === 0) return;
+    history.processing = true;
+    const historyItem = history.undo.pop() as string;
+    history.redo.push(history.currentState);
+    history.currentState = historyItem;
+    await canvas.loadFromJSON(historyItem);
+    canvas.renderAll();
+    history.processing = false;
+    checkCanUndoRedo();
+  };
+
+  canvas.redo = async () => {
+    console.log("DOING redo", history.redo.length);
+    if (history.redo.length === 0) return;
+    history.processing = true;
+    const historyItem = history.redo.pop() as string;
+    history.undo.push(history.currentState);
+    history.currentState = historyItem;
+    await canvas.loadFromJSON(historyItem);
+    canvas.renderAll();
+    history.processing = false;
+    checkCanUndoRedo();
+  };
+
+  const handleHistoryChanges = () => {
+    if (history.processing) return;
+    console.warn("saveHistoryChanges");
+
+    if (history.undo.length >= MAX_UNDO_STEPS) {
+      // Remove the first item if the array exceeds the maximum length
+      history.undo.shift();
+    }
+    history.undo.push(history.currentState);
+    history.currentState = JSON.stringify(
+      canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON)
+    );
+    history.redo = [];
+    console.log("historyUndo stack length", history.undo.length);
+    checkCanUndoRedo();
+  };
+
+  canvas.on({
+    "object:added": handleHistoryChanges,
+    "object:modified": handleHistoryChanges,
+    "object:removed": handleHistoryChanges,
+    "object:skewing": handleHistoryChanges,
+  });
+};
+
+export function CanvasContextProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const [ready, setReady] = useState(false);
-  // const [canvas, setCanvas] = useState<fabric.Canvas | null>(null);
-  const canvas = useRef<fabric.Canvas | null>(null);
+  const [activeObject, setActiveObject] = useState<fabric.FabricObject | null>(
+    null
+  );
+  const [layers, setLayers] = useState<fabric.FabricObject[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const canvas = useRef<FabricCanvas | null>(null);
 
   console.log("CanvasContextProvider render", { canvas });
 
@@ -34,14 +179,22 @@ export default function CanvasContextProvider({
     console.log("initializeCanvas", { canvasElement });
     const newCanvas = new fabric.Canvas(canvasElement, {
       backgroundColor: "lightgray",
-    });
+    }) as FabricCanvas;
     newCanvas.add(
-      new fabric.Circle({ x: 200, y: 100, radius: 50, fill: "red" })
+      new fabric.Circle({ left: 200, top: 100, radius: 50, fill: "red" })
     );
     newCanvas.add(
-      new fabric.Rect({ x: 300, y: 200, width: 50, height: 100, fill: "green" })
+      new fabric.Rect({
+        left: 300,
+        top: 200,
+        width: 50,
+        height: 100,
+        fill: "green",
+      })
     );
-    initializeEvents(newCanvas);
+    initializeEvents({ canvas: newCanvas, setActiveObject, setLayers });
+    initializeHistory({ canvas: newCanvas, setCanUndo, setCanRedo });
+
     canvas.current = newCanvas;
     setReady(true);
   };
@@ -64,9 +217,9 @@ export default function CanvasContextProvider({
       if (!canvas) return;
 
       if (key === "z" && (ctrlKey || metaKey) && shiftKey) {
-        console.log("REDO");
+        canvas?.current?.redo();
       } else if (key === "z" && (ctrlKey || metaKey)) {
-        console.log("UNDO");
+        canvas?.current?.undo();
       }
     }
 
@@ -82,12 +235,23 @@ export default function CanvasContextProvider({
       value={{
         ready,
         fabric,
-        canvas: canvas.current!,
+        canvas: canvas.current as FabricCanvas,
         initializeCanvas,
         disposeCanvas,
+        obj: activeObject,
+        layers,
+        canUndo,
+        canRedo,
+        loadSvg: (svgString: string, onSuccess?: () => void) => {
+          loadSvg(canvas.current as FabricCanvas, svgString, onSuccess);
+        },
       }}
     >
       {children}
     </CanvasContext.Provider>
   );
 }
+
+export const useCanvas = () => {
+  return useContext(CanvasContext);
+};
