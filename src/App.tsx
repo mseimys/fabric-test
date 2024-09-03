@@ -8,11 +8,11 @@ import { Objects } from "./Objects";
 function App() {
   return (
     <CanvasContextProvider>
-      <h1>Fabric Test</h1>
-      <div>
+      <h2>Fabric Test</h2>
+      <div className="flex-row">
+        <Objects />
         <Canvas />
         <Details />
-        <Objects />
       </div>
     </CanvasContextProvider>
   );

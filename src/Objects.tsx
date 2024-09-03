@@ -6,32 +6,48 @@ import { useCanvas } from "./CanvasContext";
 const LayersComponent = ({ layers }: { layers: FabricObject[] }) => {
   console.log("LayersComponent render", { layers });
 
-  return layers.map((obj, index) => (
-    <span key={index}>
-      {index}
-      {obj.type}
-    </span>
-  ));
+  return (
+    <ul>
+      {layers.map((obj, index) => (
+        <li key={index}>
+          {index} - {obj.type}
+        </li>
+      ))}
+    </ul>
+  );
 };
 
 const Layers = memo(LayersComponent);
 
+const SVG_STRING = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+        <rect id="MAIN_000_CONTAIN" x="60" y="125" width="30" height="200" fill="blue"/>
+        <rect id="MAIN_001" x="520" y="50" width="360" height="425" fill="yellow"/>
+      </svg>`;
+
 export function Objects() {
-  const { layers, canRedo, canUndo, canvas } = useCanvas();
+  const { layers, canRedo, canUndo, canvas, loadSvg } = useCanvas();
   return (
-    <>
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          loadSvg(SVG_STRING);
+        }}
+      >
+        LOAD SVG
+      </button>
+      <div>
+        <button type="button" disabled={!canUndo} onClick={() => canvas.undo()}>
+          UNDO
+        </button>
+        <button type="button" disabled={!canRedo} onClick={() => canvas.redo()}>
+          REDO
+        </button>
+      </div>
       <div>
         Layers:
         {<Layers layers={layers} />}
       </div>
-      <br />
-      {JSON.stringify(canUndo)}
-      <button type="button" disabled={!canUndo} onClick={() => canvas.undo()}>
-        UNDO
-      </button>
-      <button type="button" disabled={!canRedo} onClick={() => canvas.redo()}>
-        REDO
-      </button>
-    </>
+    </div>
   );
 }

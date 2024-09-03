@@ -34,10 +34,19 @@ const initializeEvents = ({
   setActiveObject: (_: fabric.FabricObject | null) => void;
   setLayers: (_: fabric.FabricObject[]) => void;
 }) => {
-  const handleSelection = (_: Partial<fabric.TEvent<fabric.TPointerEvent>>) => {
+  const handleSelection = (
+    _?: Partial<fabric.TEvent<fabric.TPointerEvent>>
+  ) => {
     const activeObject = canvas.getActiveObject() || null;
     console.log("handleSelection", { activeObject });
     setActiveObject(activeObject);
+  };
+
+  const handleObjectChanges = (
+    _?: { target: fabric.FabricObject } | undefined
+  ) => {
+    const { objects } = canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON);
+    setLayers(objects as fabric.FabricObject[]);
   };
 
   canvas.on({
@@ -46,26 +55,17 @@ const initializeEvents = ({
     "selection:cleared": handleSelection,
   });
 
-  const handleObjectChanges = (
-    event: { target: fabric.FabricObject } | undefined
-  ) => {
-    console.log("handleObjectChanges event", event);
-    const { objects } = canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON);
-    setLayers(objects as fabric.FabricObject[]);
-  };
-
   canvas.on({
     "object:added": handleObjectChanges,
     "object:modified": handleObjectChanges,
     "object:removed": handleObjectChanges,
     "object:skewing": handleObjectChanges,
   });
+
+  // Call on initialization to set the initial state
+  handleSelection();
+  handleObjectChanges();
 };
-
-// const { objects, elements } = await fabric.loadSVGFromString(templateString);
-
-// canvas.add(...objects);
-// canvas.renderAll();
 
 const history = {
   undo: [] as string[],
@@ -95,7 +95,6 @@ const initializeHistory = ({
   setCanUndo: (_: boolean) => void;
   setCanRedo: (_: boolean) => void;
 }) => {
-  // SAVE FIRST STATE, MAKE SURE UNDO RETURNS TO IT ALWAYS
   history.undo = [];
   history.redo = [];
   history.processing = false;
@@ -109,7 +108,6 @@ const initializeHistory = ({
   };
 
   canvas.undo = async () => {
-    console.log("DOING undo", history.undo.length);
     if (history.undo.length === 0) return;
     history.processing = true;
     const historyItem = history.undo.pop() as string;
@@ -147,7 +145,6 @@ const initializeHistory = ({
       canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON)
     );
     history.redo = [];
-    console.log("historyUndo stack length", history.undo.length);
     checkCanUndoRedo();
   };
 
@@ -176,7 +173,6 @@ export function CanvasContextProvider({
   console.log("CanvasContextProvider render", { canvas });
 
   const initializeCanvas = (canvasElement: HTMLCanvasElement) => {
-    console.log("initializeCanvas", { canvasElement });
     const newCanvas = new fabric.Canvas(canvasElement, {
       backgroundColor: "lightgray",
     }) as FabricCanvas;
@@ -200,14 +196,11 @@ export function CanvasContextProvider({
   };
 
   const disposeCanvas = () => {
-    console.log("disposeCanvas");
     canvas.current?.dispose();
     canvas.current = null;
-    // canvas?.dispose();
   };
 
   useEffect(() => {
-    console.log("Calling useEffect", canvas);
     function handleKeyboardShortcuts(event: KeyboardEvent) {
       const { key, metaKey, shiftKey, ctrlKey } = event;
 
@@ -217,9 +210,9 @@ export function CanvasContextProvider({
       if (!canvas) return;
 
       if (key === "z" && (ctrlKey || metaKey) && shiftKey) {
-        canvas?.current?.redo();
+        canvas.current?.redo();
       } else if (key === "z" && (ctrlKey || metaKey)) {
-        canvas?.current?.undo();
+        canvas.current?.undo();
       }
     }
 
