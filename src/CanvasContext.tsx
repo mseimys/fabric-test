@@ -1,14 +1,41 @@
 import { useState, createContext, useRef, useEffect, useContext } from "react";
 
 import * as fabric from "fabric";
+import { initializeHistory } from "./fabricHistory";
 
 type FabricCanvas = fabric.Canvas & {
   undo: () => Promise<void>;
   redo: () => Promise<void>;
 };
 
-const FABRIC_SAVE_TO_JSON = ["selectable", "editable", "id", "title"];
-const MAX_UNDO_STEPS = 5;
+const FABRIC_CUSTOM_PROPERTIES = ["selectable", "editable", "id", "title"];
+
+// Make sure these properties are (de)serialized
+fabric.FabricObject.customProperties = FABRIC_CUSTOM_PROPERTIES;
+const originalGetSvgCommons = fabric.FabricObject.prototype.getSvgCommons;
+fabric.FabricObject.prototype.getSvgCommons = function () {
+  // Save title in SVG
+  const title = (this as any).title;
+  const extra = title ? ` title="${title}"` : "";
+  return originalGetSvgCommons.call(this) + extra;
+};
+
+// This is extreme hack to have `text-align` output in SVG
+const originalAddPaintOrder = (fabric.FabricObject.prototype as any)
+  .addPaintOrder;
+(fabric.FabricObject.prototype as any).addPaintOrder = function () {
+  const textAlign = (this as any).textAlign;
+  const extra = textAlign ? ` text-align="${textAlign}"` : "";
+
+  // This will be inserted inside the `<text ... >` tag.
+  return originalAddPaintOrder.call(this) + extra;
+};
+
+type ModifyFunction = (_: fabric.FabricObject) => void;
+
+type SerializedObject = fabric.FabricObject & {
+  [key: string]: string | number;
+};
 
 const initialContext = {
   fabric,
@@ -16,11 +43,15 @@ const initialContext = {
   canvas: {} as FabricCanvas,
   initializeCanvas: (_: HTMLCanvasElement) => {},
   disposeCanvas: () => {},
-  obj: null as fabric.FabricObject | null,
+  obj: undefined as SerializedObject | undefined,
+  updateActiveObject: (() => {}) as (_: ModifyFunction) => void,
   layers: [] as fabric.FabricObject[],
   canUndo: false,
   canRedo: false,
+  undo: async () => {},
+  redo: async () => {},
   loadSvg: (svgString: string, onSuccess?: () => void) => {},
+  canvasToSvg: async () => "",
 };
 
 const CanvasContext = createContext<typeof initialContext>(initialContext);
@@ -31,21 +62,24 @@ const initializeEvents = ({
   setLayers,
 }: {
   canvas: FabricCanvas;
-  setActiveObject: (_: fabric.FabricObject | null) => void;
+  setActiveObject: (_: SerializedObject | null) => void;
   setLayers: (_: fabric.FabricObject[]) => void;
 }) => {
-  const handleSelection = (
+  const handleSelection = async (
     _?: Partial<fabric.TEvent<fabric.TPointerEvent>>
   ) => {
-    const activeObject = canvas.getActiveObject() || null;
-    console.log("handleSelection", { activeObject });
-    setActiveObject(activeObject);
+    const activeObject = canvas.getActiveObject();
+    if (!activeObject || activeObject.isType("activeselection")) {
+      setActiveObject(null);
+      return;
+    }
+    setActiveObject(activeObject.toDatalessObject(FABRIC_CUSTOM_PROPERTIES));
   };
 
   const handleObjectChanges = (
     _?: { target: fabric.FabricObject } | undefined
   ) => {
-    const { objects } = canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON);
+    const { objects } = canvas.toDatalessJSON(FABRIC_CUSTOM_PROPERTIES);
     setLayers(objects as fabric.FabricObject[]);
   };
 
@@ -67,11 +101,16 @@ const initializeEvents = ({
   handleObjectChanges();
 };
 
-const history = {
-  undo: [] as string[],
-  redo: [] as string[],
-  processing: false,
-  currentState: "",
+export const setTextObjectTitle = (
+  obj: fabric.FabricText,
+  element: Element
+): fabric.FabricText => {
+  const parentNode: Element = element.parentNode as Element; // Raw SVG parent group <g> node
+  const title =
+    parentNode?.getAttribute("title") ?? element.getAttribute("title") ?? "";
+  console.log("setTextObjectTitle", title);
+  obj.set({ title });
+  return obj;
 };
 
 const loadSvg = async (
@@ -79,81 +118,31 @@ const loadSvg = async (
   svg: string,
   onSuccess?: () => void
 ) => {
-  const { objects } = await fabric.loadSVGFromString(svg);
-  const objectsToRender = objects.filter((item) => item !== null);
+  const { objects, allElements } = await fabric.loadSVGFromString(svg);
+  const objectsToRender = objects
+    .map((item, index) => {
+      console.log("loading", item?.type);
+      if (item?.isType("text")) {
+        return setTextObjectTitle(
+          item as fabric.FabricText,
+          allElements[index]
+        );
+      }
+      return item;
+    })
+    .filter((item) => item !== null);
+  console.log(
+    objectsToRender,
+    allElements.map((i) => i.getAttributeNames())
+  );
   canvas.add(...objectsToRender);
   canvas.renderAll();
   onSuccess?.();
 };
 
-const initializeHistory = ({
-  canvas,
-  setCanUndo,
-  setCanRedo,
-}: {
-  canvas: FabricCanvas;
-  setCanUndo: (_: boolean) => void;
-  setCanRedo: (_: boolean) => void;
-}) => {
-  history.undo = [];
-  history.redo = [];
-  history.processing = false;
-  history.currentState = JSON.stringify(
-    canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON)
-  );
-
-  const checkCanUndoRedo = () => {
-    setCanUndo(history.undo.length !== 0);
-    setCanRedo(history.redo.length !== 0);
-  };
-
-  canvas.undo = async () => {
-    if (history.undo.length === 0) return;
-    history.processing = true;
-    const historyItem = history.undo.pop() as string;
-    history.redo.push(history.currentState);
-    history.currentState = historyItem;
-    await canvas.loadFromJSON(historyItem);
-    canvas.renderAll();
-    history.processing = false;
-    checkCanUndoRedo();
-  };
-
-  canvas.redo = async () => {
-    console.log("DOING redo", history.redo.length);
-    if (history.redo.length === 0) return;
-    history.processing = true;
-    const historyItem = history.redo.pop() as string;
-    history.undo.push(history.currentState);
-    history.currentState = historyItem;
-    await canvas.loadFromJSON(historyItem);
-    canvas.renderAll();
-    history.processing = false;
-    checkCanUndoRedo();
-  };
-
-  const handleHistoryChanges = () => {
-    if (history.processing) return;
-    console.warn("saveHistoryChanges");
-
-    if (history.undo.length >= MAX_UNDO_STEPS) {
-      // Remove the first item if the array exceeds the maximum length
-      history.undo.shift();
-    }
-    history.undo.push(history.currentState);
-    history.currentState = JSON.stringify(
-      canvas.toDatalessJSON(FABRIC_SAVE_TO_JSON)
-    );
-    history.redo = [];
-    checkCanUndoRedo();
-  };
-
-  canvas.on({
-    "object:added": handleHistoryChanges,
-    "object:modified": handleHistoryChanges,
-    "object:removed": handleHistoryChanges,
-    "object:skewing": handleHistoryChanges,
-  });
+const canvasToSvg = async (canvas: FabricCanvas) => {
+  const svg = canvas.toSVG({ suppressPreamble: true });
+  return svg;
 };
 
 export function CanvasContextProvider({
@@ -169,6 +158,8 @@ export function CanvasContextProvider({
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const canvas = useRef<FabricCanvas | null>(null);
+  const undo = useRef(async () => {});
+  const redo = useRef(async () => {});
 
   console.log("CanvasContextProvider render", { canvas });
 
@@ -180,6 +171,14 @@ export function CanvasContextProvider({
       new fabric.Circle({ left: 200, top: 100, radius: 50, fill: "red" })
     );
     newCanvas.add(
+      new fabric.IText("Hello!", {
+        left: 100,
+        top: 100,
+        fill: "black",
+        editable: true,
+      })
+    );
+    newCanvas.add(
       new fabric.Rect({
         left: 300,
         top: 200,
@@ -189,10 +188,28 @@ export function CanvasContextProvider({
       })
     );
     initializeEvents({ canvas: newCanvas, setActiveObject, setLayers });
-    initializeHistory({ canvas: newCanvas, setCanUndo, setCanRedo });
+    const history = initializeHistory({
+      canvas: newCanvas,
+      setCanUndo,
+      setCanRedo,
+    });
+    undo.current = history.undo;
+    redo.current = history.redo;
 
     canvas.current = newCanvas;
     setReady(true);
+  };
+
+  const updateActiveObject = (f: ModifyFunction) => {
+    const activeObject = canvas.current?.getActiveObject();
+    console.log("updateActiveObject", activeObject);
+    if (activeObject && !activeObject.isType("activeselection")) {
+      f(activeObject);
+      activeObject.setCoords();
+      canvas.current?.renderAll();
+      canvas.current?.fire("object:modified", { target: activeObject });
+      canvas.current?.fire("selection:updated");
+    }
   };
 
   const disposeCanvas = () => {
@@ -210,9 +227,21 @@ export function CanvasContextProvider({
       if (!canvas) return;
 
       if (key === "z" && (ctrlKey || metaKey) && shiftKey) {
-        canvas.current?.redo();
+        redo.current();
       } else if (key === "z" && (ctrlKey || metaKey)) {
-        canvas.current?.undo();
+        undo.current();
+      } else if (key === "Backspace" || key === "Delete") {
+        // Delete
+        const activeObjects = canvas.current?.getActiveObjects().map((obj) => {
+          if (!(obj as fabric.IText).isEditing) {
+            canvas.current?.remove(obj);
+            return true;
+          }
+        });
+        if (activeObjects?.some(Boolean)) {
+          canvas.current?.discardActiveObject();
+          canvas.current?.renderAll();
+        }
       }
     }
 
@@ -229,6 +258,8 @@ export function CanvasContextProvider({
         ready,
         fabric,
         canvas: canvas.current as FabricCanvas,
+        undo: undo.current,
+        redo: redo.current,
         initializeCanvas,
         disposeCanvas,
         obj: activeObject,
@@ -238,6 +269,10 @@ export function CanvasContextProvider({
         loadSvg: (svgString: string, onSuccess?: () => void) => {
           loadSvg(canvas.current as FabricCanvas, svgString, onSuccess);
         },
+        canvasToSvg: async () => {
+          return canvas.current ? canvasToSvg(canvas.current) : "";
+        },
+        updateActiveObject,
       }}
     >
       {children}

@@ -4,6 +4,7 @@ import { CanvasContextProvider } from "./CanvasContext";
 import { Canvas } from "./Canvas";
 import { Details } from "./Details";
 import { Objects } from "./Objects";
+import { SerializedObject } from "./SerializedObject";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Canvas />
         <Details />
       </div>
+      <SerializedObject />
     </CanvasContextProvider>
   );
 }
