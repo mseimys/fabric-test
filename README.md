@@ -48,3 +48,5 @@ export default tseslint.config({
   },
 })
 ```
+
+![](/img/90-percent-ai-companies.jpeg)
