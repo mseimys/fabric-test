@@ -1,10 +1,10 @@
-import "./App.css";
+import './App.css';
 
-import { CanvasContextProvider } from "./CanvasContext";
-import { Canvas } from "./Canvas";
-import { Details } from "./Details";
-import { Objects } from "./Objects";
-import { SerializedObject } from "./SerializedObject";
+import { CanvasContextProvider } from './CanvasContext';
+import { Canvas } from './Canvas';
+import { Details } from './Details';
+import { Objects } from './Objects';
+import { SerializedObject } from './SerializedObject';
 
 function App() {
   return (

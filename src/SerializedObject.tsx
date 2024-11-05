@@ -1,23 +1,32 @@
-import { useState } from "react";
-import { useCanvas } from "./CanvasContext";
+import { useState } from 'react';
+import { useCanvas } from './CanvasContext';
 
 export function SerializedObject() {
-  const [svg, setSvg] = useState("");
-  const { canvasToSvg } = useCanvas();
-  console.log("SerializedObject render");
+  const [rawdata, setRawdata] = useState('');
+  const { canvasToSvg, canvasToJson } = useCanvas();
+  console.log('SerializedObject render');
   return (
-    <div>
+    <div style={{ padding: '12px' }}>
       <button
         type="button"
         onClick={async () => {
           const data = await canvasToSvg();
-          setSvg(data);
+          setRawdata(data);
         }}
       >
         TO SVG
       </button>
+      <button
+        type="button"
+        onClick={async () => {
+          const data = await canvasToJson();
+          setRawdata(data);
+        }}
+      >
+        TO JSON
+      </button>
       <br />
-      {svg}
+      <pre>{rawdata}</pre>
     </div>
   );
 }

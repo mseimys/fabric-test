@@ -1,0 +1,64 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.6.4/schema.json",
+  "formatter": {
+    "ignore": ["./src/maps/usa.json", "./src/types/graphql.ts"],
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 120,
+    "attributePosition": "auto"
+  },
+  "organizeImports": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "noAutofocus": "off",
+        "noSvgWithoutTitle": "off",
+        "useAltText": "off",
+        "useKeyWithClickEvents": "off",
+        "useMediaCaption": "off"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "useArrowFunction": "off"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "off",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
+      },
+      "performance": { "noAccumulatingSpread": "off" },
+      "security": { "noDangerouslySetInnerHtml": "off" },
+      "style": {
+        "noNonNullAssertion": "off",
+        "noParameterAssign": "off",
+        "useEnumInitializers": "off",
+        "useImportType": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noAssignInExpressions": "off",
+        "noConfusingVoidType": "off",
+        "noExplicitAny": "off",
+        "noMisleadingCharacterClass": "off"
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "jsxQuoteStyle": "double",
+      "quoteProperties": "asNeeded",
+      "trailingComma": "all",
+      "semicolons": "always",
+      "arrowParentheses": "asNeeded",
+      "bracketSpacing": true,
+      "bracketSameLine": false,
+      "quoteStyle": "single",
+      "attributePosition": "auto"
+    }
+  }
+}

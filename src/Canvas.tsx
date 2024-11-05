@@ -1,12 +1,12 @@
-import { memo, useEffect, useRef } from "react";
-import { useCanvas } from "./CanvasContext";
+import { memo, useEffect, useRef } from 'react';
+import { useCanvas } from './CanvasContext';
 
 function CanvasComponent() {
   const { initializeCanvas, disposeCanvas } = useCanvas();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  console.log("Canvas render");
+  console.log('Canvas render');
 
   useEffect(() => {
     if (!canvasRef.current) return;

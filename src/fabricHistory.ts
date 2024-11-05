@@ -1,13 +1,12 @@
-import type { Canvas } from "fabric";
+import type { Canvas } from 'fabric';
 
 const DEFAULT_MAX_UNDO_STEPS = 50;
 
 const history = {
-  initialized: true,
   undo: [] as string[],
   redo: [] as string[],
   processing: false,
-  currentState: "",
+  currentState: '',
 };
 
 export const initializeHistory = ({
@@ -26,9 +25,7 @@ export const initializeHistory = ({
   history.undo = [];
   history.redo = [];
   history.processing = false;
-  history.currentState = JSON.stringify(
-    canvas.toDatalessJSON(customProperties)
-  );
+  history.currentState = JSON.stringify(canvas.toDatalessJSON(customProperties));
 
   const checkCanUndoRedo = () => {
     setCanUndo(history.undo.length !== 0);
@@ -61,25 +58,23 @@ export const initializeHistory = ({
 
   const handleHistoryChanges = () => {
     if (history.processing) return;
-    console.warn("saveHistoryChanges");
+    console.warn('saveHistoryChanges');
 
     if (history.undo.length >= maxUndoSteps) {
       // Remove the first item if the array exceeds the maximum length
       history.undo.shift();
     }
     history.undo.push(history.currentState);
-    history.currentState = JSON.stringify(
-      canvas.toDatalessJSON(customProperties)
-    );
+    history.currentState = JSON.stringify(canvas.toDatalessJSON(customProperties));
     history.redo = [];
     checkCanUndoRedo();
   };
 
   canvas.on({
-    "object:added": handleHistoryChanges,
-    "object:modified": handleHistoryChanges,
-    "object:removed": handleHistoryChanges,
-    "object:skewing": handleHistoryChanges,
+    'object:added': handleHistoryChanges,
+    'object:modified': handleHistoryChanges,
+    'object:removed': handleHistoryChanges,
+    'object:skewing': handleHistoryChanges,
   });
 
   return {
