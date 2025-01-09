@@ -30,7 +30,24 @@ const SVG_STRING = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height=
 </svg>`;
 
 export function Objects() {
-  const { layers, canRedo, canUndo, loadSvg, undo, redo } = useCanvas();
+  const { layers, canRedo, canUndo, loadSvg, undo, redo, canvas } = useCanvas();
+
+  const loadJson = async () => {
+    const userInput = prompt('Please enter JSON:');
+    if (userInput !== null) {
+      const obj = JSON.parse(userInput);
+      await canvas?.loadFromJSON(obj);
+      canvas.renderAll();
+    }
+  };
+
+  const loadSvgInput = async () => {
+    const userInput = prompt('Please enter SVG:');
+    if (userInput !== null) {
+      loadSvg(userInput);
+    }
+  };
+
   return (
     <div>
       <button
@@ -40,6 +57,12 @@ export function Objects() {
         }}
       >
         LOAD SVG
+      </button>
+      <button type="button" onClick={loadSvgInput}>
+        LOAD SVG IN
+      </button>
+      <button type="button" onClick={loadJson}>
+        LOAD JSON
       </button>
       <div>
         <button type="button" disabled={!canUndo} onClick={undo}>

@@ -106,6 +106,7 @@ const loadSvg = async (canvas: fabric.Canvas, svg: string, onSuccess?: () => voi
     .map((item, index) => {
       console.log('loading', item?.type);
       if (item?.isType('text')) {
+        console.log(JSON.stringify(item));
         return setTextObjectTitle(item as fabric.FabricText, allElements[index]);
       }
       return item;
@@ -155,6 +156,16 @@ export function CanvasContextProvider({
         editable: true,
       }),
     );
+    newCanvas.add(
+      new fabric.IText('Hello!', {
+        left: 100,
+        top: 150,
+        fill: 'black',
+        editable: true,
+      }),
+    );
+    const imgEl = document.createElement('img');
+    newCanvas.add(new fabric.FabricImage(imgEl, { left: 200, top: 100, width: 100, height: 333 }));
     // newCanvas.add(new fabric.Circle({ left: 200, top: 100, radius: 50, fill: 'red' }));
     // newCanvas.add(
     //   new fabric.Rect({
